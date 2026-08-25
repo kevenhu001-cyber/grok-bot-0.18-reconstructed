@@ -4,6 +4,7 @@ import { access, cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } fr
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { getRawHeader } from "@electron/asar";
 import { packStagedAppWithIntegrity } from "./lib/asar-integrity.mjs";
 import { repoRoot } from "./lib/config.mjs";
 import { run } from "./lib/process.mjs";
@@ -44,6 +45,10 @@ async function sha256(target) {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(target)) hash.update(chunk);
   return hash.digest("hex");
+}
+
+function asarHeaderSha256(target) {
+  return createHash("sha256").update(getRawHeader(target).headerString).digest("hex");
 }
 
 async function assertPinnedInstaller(installer) {
@@ -218,6 +223,7 @@ try {
   });
 
   const verified = await assertPortableRuntime(runtime.executableName);
+  const headerSha256 = asarHeaderSha256(verified.asar);
   await run("powershell.exe", [
     "-NoProfile",
     "-ExecutionPolicy",
@@ -226,8 +232,8 @@ try {
     path.join(repoRoot, "scripts", "windows", "set-asar-integrity.ps1"),
     "-ExePath",
     verified.executable,
-    "-AsarPath",
-    verified.asar,
+    "-HeaderHash",
+    headerSha256,
   ]);
   await buildArchives(runtime.executableName);
 
@@ -240,6 +246,7 @@ try {
     nativeDirectories,
     executableName: runtime.executableName,
     appAsarSha256: await sha256(verified.asar),
+    appAsarHeaderSha256: headerSha256,
     executableSha256: await sha256(verified.executable),
     portableZip: path.basename(outputZip),
     portableZipSha256: await sha256(outputZip),
