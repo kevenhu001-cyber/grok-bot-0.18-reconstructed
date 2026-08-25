@@ -16,6 +16,8 @@ on:
       - "package-lock.json"
       - "src/app/package.json"
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
@@ -129,3 +131,50 @@ jobs:
             dist/windows-package-manifest.json
           if-no-files-found: error
           retention-days: 14
+
+  publish-release:
+    name: Publish Windows Release
+    needs: package-windows
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: grok-bot-0.18-reconstructed-windows-x64
+          path: release-assets
+
+      - name: Publish v0.18.0-reconstructed.1
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: v0.18.0-reconstructed.1
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; leaving it unchanged."
+            exit 0
+          fi
+
+          cat > release-notes.md <<'EOF'
+          # Grok Bot 0.18 Reconstructed — Windows x64
+
+          Windows x64 build produced from the checksum-pinned Grok Bot 0.18.0 upstream runtime and the reconstructed application stage.
+
+          Assets:
+          - `Grok-Bot-0.18-Reconstructed-Setup-x64.exe` — NSIS per-user installer
+          - `Grok-Bot-0.18-Reconstructed-win32-x64.zip` — portable Windows package
+          - `windows-package-manifest.json` — SHA-256 build manifest
+
+          The Windows binaries are currently unsigned, so Windows SmartScreen may display an unknown-publisher warning.
+          EOF
+
+          gh release create "$RELEASE_TAG" \
+            release-assets/Grok-Bot-0.18-Reconstructed-Setup-x64.exe \
+            release-assets/Grok-Bot-0.18-Reconstructed-win32-x64.zip \
+            release-assets/windows-package-manifest.json \
+            --target "$GITHUB_SHA" \
+            --title "Grok Bot 0.18 Reconstructed — Windows x64" \
+            --notes-file release-notes.md
