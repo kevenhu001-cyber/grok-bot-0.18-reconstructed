@@ -136,21 +136,20 @@ async function extractOfficialRuntime(installer) {
 async function replaceWindowsNativeClosure(runtimeRoot) {
   const upstreamUnpackedDist = path.join(runtimeRoot, "resources", "app.asar.unpacked", "dist");
   const replaced = [];
+  const removed = [];
   for (const directory of ["deps", "native", "node-deps"]) {
     const source = path.join(upstreamUnpackedDist, directory);
     const destination = path.join(stageRoot, "dist", directory);
+    await rm(destination, { recursive: true, force: true });
     if (await exists(source)) {
-      await rm(destination, { recursive: true, force: true });
       await cp(source, destination, { recursive: true, dereference: false, preserveTimestamps: true });
       replaced.push(directory);
-      continue;
-    }
-    if (await exists(destination)) {
-      throw new Error(`Pinned Windows runtime is missing required unpacked runtime directory dist/${directory}.`);
+    } else {
+      removed.push(directory);
     }
   }
   if (replaced.length === 0) throw new Error("Pinned Windows runtime did not provide any unpacked native runtime directories.");
-  return replaced;
+  return { replaced, removed };
 }
 
 async function markWindowsPackageIdentity() {
@@ -202,7 +201,7 @@ await assertPinnedInstaller(archivedInstaller);
 const runtime = await extractOfficialRuntime(archivedInstaller);
 try {
   await cp(runtime.root, portableRoot, { recursive: true, dereference: false, preserveTimestamps: true });
-  const nativeDirectories = await replaceWindowsNativeClosure(runtime.root);
+  const nativeClosure = await replaceWindowsNativeClosure(runtime.root);
   await markWindowsPackageIdentity();
   await packStagedAppWithIntegrity({
     stageRoot,
@@ -243,7 +242,8 @@ try {
     arch: "x64",
     upstreamVersion: "0.18.0",
     upstreamInstallerSha256: windowsInstallerSha256,
-    nativeDirectories,
+    nativeDirectories: nativeClosure.replaced,
+    removedMacNativeDirectories: nativeClosure.removed,
     executableName: runtime.executableName,
     appAsarSha256: await sha256(verified.asar),
     appAsarHeaderSha256: headerSha256,
