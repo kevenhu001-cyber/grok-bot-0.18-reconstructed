@@ -32,10 +32,10 @@ jobs:
         with:
           lfs: false
 
-      - name: Pull only the pinned macOS bootstrap artifact
+      - name: Pull the pinned release artifacts used by checks and bootstrap
         run: |
           git lfs install
-          git lfs pull --include="research-archives/original/0.18.0/macos-arm64/Grok_Bot_0.18.0.dmg" --exclude=""
+          git lfs pull --include="research-archives/original/0.18.0/macos-arm64/Grok_Bot_0.18.0.dmg,research-archives/original/0.18.0/windows-x64/Grok_Bot_0.18.0_Setup.exe" --exclude=""
 
       - uses: actions/setup-node@v4
         with:
