@@ -27,6 +27,10 @@ function isUnpackedRuntimeFile(relative) {
   return unpackedPrefixes.some(prefix => relative.startsWith(prefix));
 }
 
+function normalizeArchiveRelative(relative) {
+  return relative.replace(/^[\\/]+/, "").split(path.sep).join("/");
+}
+
 async function snapshotFiles(root) {
   const files = await walkFiles(root);
   return new Map(await Promise.all(files.map(async relative => {
@@ -49,9 +53,14 @@ function snapshotDiff(before, after) {
 async function archiveFileEntries(archivePath) {
   const entries = new Map();
   for (const raw of listPackage(archivePath)) {
-    const relative = raw.replace(/^\//, "");
+    // @electron/asar intentionally renders listPackage paths with node:path,
+    // so Windows entries are rooted with "\\" and use backslashes. statFile
+    // must receive the native relative spelling, while our snapshots use a
+    // platform-independent POSIX key for deterministic comparisons.
+    const nativeRelative = raw.replace(/^[\\/]+/, "");
+    const relative = normalizeArchiveRelative(nativeRelative);
     try {
-      const entry = statFile(archivePath, relative);
+      const entry = statFile(archivePath, nativeRelative);
       if (typeof entry.size === "number") entries.set(relative, entry);
     } catch {
       // listPackage includes directories; statFile is the file boundary.
