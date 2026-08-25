@@ -1,0 +1,131 @@
+name: windows package
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/windows-package.yml"
+      - "scripts/package-windows.mjs"
+      - "scripts/windows/**"
+      - "scripts/clean-build.mjs"
+      - "scripts/lib/**"
+      - "source/**"
+      - "frontend/**"
+      - "manifests/**"
+      - "package.json"
+      - "package-lock.json"
+      - "src/app/package.json"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  reconstruct-stage:
+    name: Build platform-neutral reconstructed stage
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Pull only the pinned macOS bootstrap artifact
+        run: |
+          git lfs install
+          git lfs pull --include="research-archives/original/0.18.0/macos-arm64/Grok_Bot_0.18.0.dmg" --exclude=""
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.5.0
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Bootstrap the checksum-pinned upstream renderer
+        run: npm run bootstrap
+
+      - name: Run reconstruction checks
+        run: npm run check
+
+      - name: Build the fidelity reconstruction stage
+        run: npm run build
+
+      - name: Archive the platform-neutral stage
+        run: tar -czf windows-stage.tgz -C .build/fidelity app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-reconstruction-stage
+          path: windows-stage.tgz
+          if-no-files-found: error
+          retention-days: 3
+
+  package-windows:
+    name: Package Windows x64
+    needs: reconstruct-stage
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Pull only the pinned Windows x64 installer
+        shell: pwsh
+        run: |
+          git lfs install
+          git lfs pull --include="research-archives/original/0.18.0/windows-x64/Grok_Bot_0.18.0_Setup.exe" --exclude=""
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.5.0
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-reconstruction-stage
+          path: .build/windows-stage-artifact
+
+      - name: Restore reconstructed stage
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .build/fidelity | Out-Null
+          tar -xzf .build/windows-stage-artifact/windows-stage.tgz -C .build/fidelity
+
+      - name: Install NSIS and locate Windows packaging tools
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          $sevenZip = "C:\Program Files\7-Zip\7z.exe"
+          if (-not (Test-Path $sevenZip)) { throw "7-Zip was not found at $sevenZip" }
+          $makensis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
+          if (-not $makensis) {
+            $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          }
+          if (-not (Test-Path $makensis)) { throw "makensis was not found" }
+          "SEVEN_ZIP=$sevenZip" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "MAKENSIS=$makensis" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Rebind native runtime, patch ASAR integrity, and package Windows
+        run: npm run package:windows
+
+      - name: Show package manifest
+        shell: pwsh
+        run: Get-Content dist/windows-package-manifest.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grok-bot-0.18-reconstructed-windows-x64
+          path: |
+            dist/Grok-Bot-0.18-Reconstructed-win32-x64.zip
+            dist/Grok-Bot-0.18-Reconstructed-Setup-x64.exe
+            dist/windows-package-manifest.json
+          if-no-files-found: error
+          retention-days: 14
