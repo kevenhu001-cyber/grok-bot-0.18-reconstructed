@@ -3,7 +3,7 @@
   "version": "0.18.0-reconstructed.1",
   "private": true,
   "type": "module",
-  "description": "Source-oriented reconstruction of the publicly shipped Grok Bot 0.18.0 macOS application",
+  "description": "Source-oriented reconstruction of the publicly shipped Grok Bot 0.18.0 desktop application",
   "engines": {
     "node": ">=26.5.0 <27"
   },
@@ -16,6 +16,7 @@
     "native:patch": "node scripts/apply-third-party-patches.mjs",
     "native:build:electron": "node scripts/build-tree-sitter-electron.mjs",
     "package": "npm run check && node scripts/package-macos.mjs",
+    "package:windows": "node scripts/package-windows.mjs",
     "package:diagnostic": "npm run check && node scripts/package-fidelity-diagnostic.mjs",
     "publication:check": "node scripts/verify-publication-tree.mjs",
     "postinstall": "node scripts/apply-third-party-patches.mjs",
