@@ -2,38 +2,17 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$ExePath,
   [Parameter(Mandatory = $true)]
-  [string]$AsarPath
+  [ValidatePattern('^[0-9a-f]{64}$')]
+  [string]$HeaderHash
 )
 
 $ErrorActionPreference = "Stop"
-
-$asarBytes = [System.IO.File]::ReadAllBytes($AsarPath)
-if ($asarBytes.Length -lt 16) {
-  throw "ASAR file is too small: $AsarPath"
-}
-
-$stringLength = [BitConverter]::ToUInt32($asarBytes, 12)
-$headerStart = 16
-$headerEnd = $headerStart + [int]$stringLength
-if ($headerEnd -gt $asarBytes.Length) {
-  throw "ASAR header exceeds archive bounds: $AsarPath"
-}
-
-$headerBytes = New-Object byte[] $stringLength
-[Array]::Copy($asarBytes, $headerStart, $headerBytes, 0, $stringLength)
-$sha = [System.Security.Cryptography.SHA256]::Create()
-try {
-  $headerHashBytes = $sha.ComputeHash($headerBytes)
-} finally {
-  $sha.Dispose()
-}
-$headerHash = -join ($headerHashBytes | ForEach-Object { $_.ToString("x2") })
 
 $integrity = @(
   [ordered]@{
     file = "resources\app.asar"
     alg = "sha256"
-    value = $headerHash
+    value = $HeaderHash
   }
 ) | ConvertTo-Json -Compress
 $payload = [System.Text.Encoding]::UTF8.GetBytes($integrity)
@@ -95,4 +74,4 @@ try {
   }
 }
 
-Write-Host "Updated ElectronAsar integrity resource: $headerHash"
+Write-Host "Updated ElectronAsar integrity resource: $HeaderHash"
