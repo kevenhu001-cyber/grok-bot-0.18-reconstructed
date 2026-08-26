@@ -16,9 +16,9 @@ type RuntimeElectronApp = Pick<
   "isPackaged" | "setPath" | "getPath" | "relaunch" | "exit"
 > & Partial<Pick<ElectronStartupApp, "isInApplicationsFolder" | "moveToApplicationsFolder">>;
 
-interface RuntimeElectronDialog extends ElectronStartupProviderPorts["dialog"] {
+type RuntimeElectronDialog = ElectronStartupProviderPorts["dialog"] & {
   showErrorBox(title: string, content: string): void;
-}
+};
 
 function formatStartupError(error: unknown): string {
   if (error instanceof Error) return error.stack ?? `${error.name}: ${error.message}`;
