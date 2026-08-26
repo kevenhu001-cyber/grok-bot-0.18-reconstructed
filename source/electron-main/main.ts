@@ -241,14 +241,9 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
   });
   deps.startup.bootstrapBeforeSingleInstance();
 
+  deps.app.disableHardwareAcceleration();
   deps.app.commandLine.appendSwitch("no-sandbox");
-  // The reconstructed Windows build previously forced Chromium into software
-  // rendering. Keep that compatibility path opt-in while allowing Windows to
-  // use Electron's normal GPU compositor by default.
-  if (platform !== "win32" || env.SAND_DISABLE_HARDWARE_ACCELERATION === "1") {
-    deps.app.disableHardwareAcceleration();
-    deps.app.commandLine.appendSwitch("disable-gpu");
-  }
+  deps.app.commandLine.appendSwitch("disable-gpu");
 
   const isPrimaryInstance = !deps.app.isPackaged || deps.app.requestSingleInstanceLock();
   if (!isPrimaryInstance) deps.app.quit();

@@ -4,11 +4,11 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("Windows rendering is not forced into software mode", async () => {
+test("desktop startup keeps the stable software-rendering compatibility path", async () => {
   const source = await read("source/electron-main/main.ts");
-  assert.match(source, /platform !== "win32" \|\| env\.SAND_DISABLE_HARDWARE_ACCELERATION === "1"/);
-  assert.match(source, /disableHardwareAcceleration\(\)/);
-  assert.match(source, /appendSwitch\("disable-gpu"\)/);
+  assert.match(source, /deps\.app\.disableHardwareAcceleration\(\);/);
+  assert.match(source, /deps\.app\.commandLine\.appendSwitch\("disable-gpu"\);/);
+  assert.doesNotMatch(source, /SAND_DISABLE_HARDWARE_ACCELERATION/);
 });
 
 test("settings reads use a short-lived cache", async () => {
