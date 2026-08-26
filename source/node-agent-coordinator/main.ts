@@ -230,7 +230,10 @@ export async function composeCoordinator(dependencies: ComposeCoordinatorDepende
   };
   server = createRendererPortServer(
     { post: (frame) => carrier.data.post(frame), close: () => carrier.data.close() },
-    { dispatchRequest, onServing: () => { toolRelay.replay(); if (!isGatewayStreamLive) server.postEvent(COORDINATOR_TRANSPORT_STATE_FAMILY, { state: "down" }); } }
+    // Do not tell the renderer that the transport is down merely because its
+    // data port became ready before the first gateway handshake. The first
+    // real transport event establishes connected/down state.
+    { dispatchRequest, onServing: () => { toolRelay.replay(); } }
   );
   const mainDispatch = createGatewayRequestDispatch(gatewayClient, isCoordinatorMainMethod);
   const applyPause = (paused: boolean) => {
