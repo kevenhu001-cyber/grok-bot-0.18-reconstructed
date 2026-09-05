@@ -1,11 +1,13 @@
 import { ProductionRenderer } from "./production/ProductionRenderer";
 import { acquireProductionRendererRuntime, mountProductionRenderer, requireProductionRendererMount } from "./production/bootstrap";
 import { PRODUCTION_RENDERER_GAPS } from "./production/evidence";
+import { createStandaloneDesktopBridge } from "./production/standalone-mode";
 import { RootShellErrorBoundary } from "./recovered/features/window-chrome/root-shell-state";
 
 const mount = requireProductionRendererMount(document.getElementById("root"));
 const runtime = acquireProductionRendererRuntime(window);
-mountProductionRenderer(mount, <RootShellErrorBoundary><ProductionRenderer {...runtime} /></RootShellErrorBoundary>);
+const standaloneRuntime = { ...runtime, bridge: createStandaloneDesktopBridge(runtime.bridge) };
+mountProductionRenderer(mount, <RootShellErrorBoundary><ProductionRenderer {...standaloneRuntime} /></RootShellErrorBoundary>);
 
 const reportHealth = async () => {
   const health = {
@@ -18,7 +20,7 @@ const reportHealth = async () => {
     cleanEntrypoint: "frontend/src/main.tsx",
     recoveredEntrypoints: 5,
     viteClient: import.meta.hot != null,
-    surfaces: ["shell", "account", "sign-in", "conversation", "transcript", "composer", "sidebar", "agents", "settings", "plugins", "updates", "deep-links", "desktop-bridge"],
+    surfaces: ["shell", "account", "standalone-mode", "sign-in", "conversation", "transcript", "composer", "sidebar", "agents", "settings", "plugins", "updates", "deep-links", "desktop-bridge"],
     evidenceGaps: Object.keys(PRODUCTION_RENDERER_GAPS)
   };
   try {
