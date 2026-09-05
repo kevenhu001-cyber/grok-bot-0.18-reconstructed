@@ -8,23 +8,53 @@ export interface LocalInferenceCliStatus {
   readonly executablePath: string | null;
 }
 
+type LocalInferenceStatus = { readonly codex: LocalInferenceCliStatus; readonly "claude-code": LocalInferenceCliStatus };
+
+const LOCAL_INFERENCE_STATUS_CACHE_MS = 3_000;
+let cachedCodexCliPath: string | null | undefined;
+let cachedClaudeCodeCliPath: string | null | undefined;
+let cachedStatus: { readonly expiresAtMs: number; readonly value: LocalInferenceStatus } | undefined;
+
 function firstExecutable(candidates: readonly (string | undefined)[]): string | null {
   for (const candidate of candidates) if (candidate != null && candidate.length > 0 && existsSync(candidate)) return candidate;
   return null;
 }
 
+function executableNames(name: string): string[] {
+  return process.platform === "win32" ? [`${name}.exe`, `${name}.cmd`, `${name}.bat`, name] : [name];
+}
+
 function pathCandidates(name: string): string[] {
-  return (process.env.PATH ?? "").split(delimiter).filter(Boolean).map(directory => join(directory, name));
+  const directories = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+  return directories.flatMap(directory => executableNames(name).map(executable => join(directory, executable)));
 }
 
 export function resolveCodexCliPath(): string | null {
+  if (cachedCodexCliPath !== undefined) return cachedCodexCliPath;
   const home = homedir();
-  return firstExecutable([process.env.CODEX_PATH, join(home, ".local", "bin", "codex"), join(home, ".codex", "bin", "codex"), ...pathCandidates("codex"), "/opt/homebrew/bin/codex", "/usr/local/bin/codex"]);
+  cachedCodexCliPath = firstExecutable([
+    process.env.CODEX_PATH,
+    join(home, ".local", "bin", "codex"),
+    join(home, ".codex", "bin", "codex"),
+    ...pathCandidates("codex"),
+    "/opt/homebrew/bin/codex",
+    "/usr/local/bin/codex",
+  ]);
+  return cachedCodexCliPath;
 }
 
 export function resolveClaudeCodeCliPath(): string | null {
+  if (cachedClaudeCodeCliPath !== undefined) return cachedClaudeCodeCliPath;
   const home = homedir();
-  return firstExecutable([process.env.CLAUDE_CODE_PATH, join(home, ".local", "bin", "claude"), join(home, ".claude", "local", "claude"), ...pathCandidates("claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]);
+  cachedClaudeCodeCliPath = firstExecutable([
+    process.env.CLAUDE_CODE_PATH,
+    join(home, ".local", "bin", "claude"),
+    join(home, ".claude", "local", "claude"),
+    ...pathCandidates("claude"),
+    "/opt/homebrew/bin/claude",
+    "/usr/local/bin/claude",
+  ]);
+  return cachedClaudeCodeCliPath;
 }
 
 function hasUsableCodexLogin(path: string): boolean {
@@ -40,17 +70,22 @@ function hasUsableCodexLogin(path: string): boolean {
   } catch { return false; }
 }
 
-export function getLocalInferenceCliStatus(): { readonly codex: LocalInferenceCliStatus; readonly "claude-code": LocalInferenceCliStatus } {
+export function getLocalInferenceCliStatus(): LocalInferenceStatus {
+  const now = Date.now();
+  if (cachedStatus != null && now < cachedStatus.expiresAtMs) return cachedStatus.value;
+
   const home = homedir();
   const codexPath = resolveCodexCliPath();
   const claudePath = resolveClaudeCodeCliPath();
   const codexAuthPath = join(process.env.CODEX_HOME?.trim() || join(home, ".codex"), "auth.json");
   const hasCodexAuthFile = existsSync(codexAuthPath);
   const hasCodexLogin = hasUsableCodexLogin(codexAuthPath);
-  return {
+  const value: LocalInferenceStatus = {
     // Codex inference is a Grok Bot-owned HTTP transport authenticated by the
     // existing Codex login. The CLI binary is not in the request path.
     codex: { installed: hasCodexAuthFile, authenticated: hasCodexLogin, executablePath: codexPath },
     "claude-code": { installed: claudePath != null, authenticated: existsSync(join(home, ".claude", ".credentials.json")) || (process.env.ANTHROPIC_API_KEY?.length ?? 0) > 0, executablePath: claudePath },
   };
+  cachedStatus = { expiresAtMs: now + LOCAL_INFERENCE_STATUS_CACHE_MS, value };
+  return value;
 }

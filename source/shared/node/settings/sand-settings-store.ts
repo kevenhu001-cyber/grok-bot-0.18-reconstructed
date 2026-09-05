@@ -15,6 +15,7 @@ import { DEFAULT_SAND_BOX_RUNTIME, isSandBoxRuntime, type SandBoxRuntime } from 
 export const SETTINGS_VERSION = 1;
 export const SAND_DOWNGRADE_MAX_FAST_MIGRATION_ID = "downgrade-persisted-max-fast";
 export const SAND_SETTINGS_MIGRATION_IDS = [SAND_DOWNGRADE_MAX_FAST_MIGRATION_ID] as const;
+const SETTINGS_READ_CACHE_MS = 500;
 
 type StringMap = Record<string, string>;
 type StringListMap = Record<string, string[]>;
@@ -91,11 +92,17 @@ function parseSettings(value: unknown): SandStoredSettings | null {
 }
 
 export class SandSettingsStore {
+  private cached: { readonly value: SandStoredSettings; readonly expiresAtMs: number } | undefined;
   constructor(readonly settingsPath: string) {}
-  load(): SandStoredSettings {
+  private readFromDisk(): SandStoredSettings {
     if (!existsSync(this.settingsPath)) return emptySettings();
     try { const parsed = parseSettings(JSON.parse(readFileSync(this.settingsPath, "utf8")) as unknown); return parsed == null ? emptySettings() : this.applyPendingMigrations(parsed); }
     catch { return emptySettings(); }
+  }
+  load(): SandStoredSettings {
+    const now = Date.now();
+    if (this.cached == null || now >= this.cached.expiresAtMs) this.cached = { value: this.readFromDisk(), expiresAtMs: now + SETTINGS_READ_CACHE_MS };
+    return structuredClone(this.cached.value);
   }
   private applyPendingMigrations(settings: SandStoredSettings): SandStoredSettings {
     if (settings.settingsMigrations.includes(SAND_DOWNGRADE_MAX_FAST_MIGRATION_ID)) return settings;
@@ -103,7 +110,7 @@ export class SandSettingsStore {
     try { this.persist(migrated); } catch {}
     return migrated;
   }
-  persist(settings: SandStoredSettings): void { mkdirSync(dirname(this.settingsPath), { recursive: true }); const temp = `${this.settingsPath}.${process.pid}.tmp`; writeFileSync(temp, JSON.stringify(settings, null, 2), "utf8"); renameSync(temp, this.settingsPath); }
+  persist(settings: SandStoredSettings): void { mkdirSync(dirname(this.settingsPath), { recursive: true }); const temp = `${this.settingsPath}.${process.pid}.tmp`; writeFileSync(temp, JSON.stringify(settings, null, 2), "utf8"); renameSync(temp, this.settingsPath); this.cached = { value: structuredClone(settings), expiresAtMs: Date.now() + SETTINGS_READ_CACHE_MS }; }
   private update(mutator: (settings: SandStoredSettings) => SandStoredSettings): void { this.persist(mutator(this.load())); }
   getHasSeenOnboarding(): boolean | undefined { return this.load().hasSeenOnboarding; }
   setHasSeenOnboarding(value: boolean): void { this.update((current) => { const { hasSeenOnboardingAccountScope: _old, ...rest } = current; return { ...rest, hasSeenOnboarding: value, ...(rest.mcpCustomInstructionsAccountScope === undefined ? {} : { hasSeenOnboardingAccountScope: rest.mcpCustomInstructionsAccountScope }) }; }); }

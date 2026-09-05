@@ -122,6 +122,10 @@ jobs:
         shell: pwsh
         run: Get-Content dist/windows-package-manifest.json
 
+      - name: Smoke test the packaged Windows application
+        shell: pwsh
+        run: ./scripts/windows/smoke-portable.ps1
+
       - uses: actions/upload-artifact@v4
         with:
           name: grok-bot-0.18-reconstructed-windows-x64
